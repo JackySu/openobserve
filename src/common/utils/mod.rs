@@ -19,3 +19,4 @@ pub mod http;
 pub mod jwt;
 pub mod stream;
 pub mod zo_logger;
+pub mod presigned_url;

@@ -31,7 +31,7 @@ use crate::common::{
     },
 };
 
-pub(crate) fn get_hash(pass: &str, salt: &str) -> String {
+pub fn get_hash(pass: &str, salt: &str) -> String {
     let key = format!("{pass}{salt}");
     let hash = PASSWORD_HASH.get(&key);
     match hash {

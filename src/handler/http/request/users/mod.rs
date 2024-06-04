@@ -20,6 +20,7 @@ use actix_web::{
     http::{self},
     post, put, web, HttpRequest, HttpResponse,
 };
+use actix_web_httpauth::extractors::basic::BasicAuth;
 use config::{
     get_config,
     utils::{base64, json},
@@ -35,7 +36,7 @@ use crate::{
                 UserRequest, UserRole,
             },
         },
-        utils::auth::UserEmail,
+        utils::{auth::UserEmail, presigned_url::generate_presigned_url},
     },
     service::users,
 };
@@ -302,6 +303,42 @@ pub async fn authentication(
     } else {
         unauthorized_error(resp)
     }
+}
+
+#[derive(serde::Deserialize)]
+struct PresignedURLGenerator {
+    #[serde(default = "default_exp_in")]
+    exp_in: u32,
+}
+
+const fn default_exp_in() -> u32 {
+    600
+}
+
+#[get("/presigned-url")]
+pub async fn get_presigned_url(
+    _req: HttpRequest,
+    basic_auth: BasicAuth,
+    query: web::Query<PresignedURLGenerator>,
+) -> Result<HttpResponse, Error> {
+    use crate::common::utils::presigned_url::generate_presigned_url;
+
+    let cfg = get_config();
+    let time = chrono::Utc::now().timestamp();
+    let password_ext_salt = config.auth.ext_auth_salt.as_str();
+    let url = generate_presigned_url(
+        basic_auth.user_id(),
+        basic_auth.password().unwrap(),
+        password_ext_salt,
+        &cfg.common.base_uri,
+        query.exp_in,
+        time,
+    );
+
+    let payload = serde_json::json!({
+        "message": url
+    });
+    Ok(HttpResponse::Ok().json(&payload))
 }
 
 #[get("/login")]
