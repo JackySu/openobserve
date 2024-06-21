@@ -599,17 +599,15 @@ async fn refresh_token_with_dex(req: actix_web::HttpRequest) -> HttpResponse {
     }
 }
 
-fn prepare_empty_cookie<'a, T: Serialize + ?Sized>(
+pub(crate) fn prepare_cookie_with_expiry<'a, T: Serialize + ?Sized, E: Into<cookie::Expiration>>(
     cookie_name: &'a str,
     token_struct: &T,
+    token_expiry: E,
     conf: &Arc<Config>,
 ) -> Cookie<'a> {
     let tokens = json::to_string(token_struct).unwrap();
     let mut auth_cookie = Cookie::new(cookie_name, tokens);
-    auth_cookie.set_expires(
-        cookie::time::OffsetDateTime::now_utc()
-            + cookie::time::Duration::seconds(conf.auth.cookie_max_age),
-    );
+    auth_cookie.set_expires(token_expiry.into());
     auth_cookie.set_http_only(true);
     auth_cookie.set_secure(conf.auth.cookie_secure_only);
     auth_cookie.set_path("/");
@@ -641,8 +639,12 @@ async fn logout(req: actix_web::HttpRequest) -> HttpResponse {
                 .await;
         }
     };
-    let auth_cookie = prepare_empty_cookie("auth_tokens", &AuthTokens::default(), &conf);
-    let auth_ext_cookie = prepare_empty_cookie("auth_ext", &AuthTokensExt::default(), &conf);
+    let cookie_expiry = cookie::time::OffsetDateTime::now_utc()
+        + cookie::time::Duration::seconds(conf.auth.cookie_max_age);
+    let auth_cookie =
+        prepare_cookie_with_expiry("auth_tokens", &AuthTokens::default(), cookie_expiry, &conf);
+    let auth_ext_cookie =
+        prepare_cookie_with_expiry("auth_ext", &AuthTokensExt::default(), cookie_expiry, &conf);
 
     #[cfg(feature = "enterprise")]
     if let Some(user_email) = user_email {

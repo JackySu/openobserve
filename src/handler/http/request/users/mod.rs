@@ -21,10 +21,7 @@ use actix_web::{
     post, put, web, HttpRequest, HttpResponse,
 };
 use actix_web_httpauth::extractors::basic::BasicAuth;
-use config::{
-    get_config,
-    utils::{base64, json},
-};
+use config::{get_config, utils::base64};
 use strum::IntoEnumIterator;
 #[cfg(feature = "enterprise")]
 use {crate::service::usage::audit, o2_enterprise::enterprise::common::auditor::AuditMessage};
@@ -40,6 +37,7 @@ use crate::{
         },
         utils::auth::{generate_presigned_url, UserEmail},
     },
+    handler::http::request::status::prepare_cookie_with_expiry,
     service::users,
 };
 
@@ -307,24 +305,16 @@ pub async fn authentication(
             "Basic {}",
             base64::encode(&format!("{}:{}", auth.name, auth.password))
         );
-        let tokens = json::to_string(&AuthTokens {
+        let token = AuthTokens {
             access_token,
             refresh_token: "".to_string(),
-        })
-        .unwrap();
-        let mut auth_cookie = cookie::Cookie::new("auth_tokens", tokens);
-        auth_cookie.set_expires(
-            cookie::time::OffsetDateTime::now_utc()
-                + cookie::time::Duration::seconds(cfg.auth.cookie_max_age),
-        );
-        auth_cookie.set_http_only(true);
-        auth_cookie.set_secure(cfg.auth.cookie_secure_only);
-        auth_cookie.set_path("/");
-        if cfg.auth.cookie_same_site_lax {
-            auth_cookie.set_same_site(cookie::SameSite::Lax);
-        } else {
-            auth_cookie.set_same_site(cookie::SameSite::None);
-        }
+        };
+
+        let cookie_name = "auth_tokens";
+        let cookie_expiry_time = cookie::time::OffsetDateTime::now_utc()
+            + cookie::time::Duration::seconds(cfg.auth.cookie_max_age);
+
+        let auth_cookie = prepare_cookie_with_expiry(cookie_name, &token, cookie_expiry_time, &cfg);
         // audit the successful login
         #[cfg(feature = "enterprise")]
         audit(audit_message).await;
@@ -503,28 +493,19 @@ pub async fn get_auth(_req: HttpRequest) -> Result<HttpResponse, Error> {
                     "email": name,
                     "name": name,
                 });
-                let tokens = json::to_string(&AuthTokensExt {
+                let token = AuthTokensExt {
                     auth_ext,
                     refresh_token: "".to_string(),
                     request_time: req_ts,
                     expires_in,
-                })
-                .unwrap();
+                };
 
-                let mut auth_cookie = cookie::Cookie::new("auth_ext", tokens);
-                auth_cookie.set_expires(
-                    cookie::time::OffsetDateTime::now_utc()
-                        + cookie::time::Duration::seconds(req_ts),
-                );
-                auth_cookie.set_http_only(true);
-                auth_cookie.set_secure(cfg.auth.cookie_secure_only);
-                auth_cookie.set_path("/");
+                let cookie_expiry = cookie::time::OffsetDateTime::now_utc()
+                    + cookie::time::Duration::seconds(req_ts);
+                let cookie_name = "auth_ext";
+                let auth_cookie =
+                    prepare_cookie_with_expiry(cookie_name, &token, cookie_expiry, &cfg);
 
-                if cfg.auth.cookie_same_site_lax {
-                    auth_cookie.set_same_site(cookie::SameSite::Lax);
-                } else {
-                    auth_cookie.set_same_site(cookie::SameSite::None);
-                }
                 let url = format!(
                     "{}{}/web/cb#id_token={}.{}",
                     cfg.common.web_url,
