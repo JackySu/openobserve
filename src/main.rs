@@ -71,6 +71,11 @@ use proto::cluster_rpc::{
 use pyroscope::PyroscopeAgent;
 #[cfg(feature = "profiling")]
 use pyroscope_pprofrs::{pprof_backend, PprofConfig};
+use rustls::{
+    pki_types::{CertificateDer, PrivateKeyDer},
+    ServerConfig,
+};
+use rustls_pemfile::{certs, private_key};
 use tokio::sync::oneshot;
 use tonic::{
     codec::CompressionEncoding,
@@ -535,6 +540,8 @@ async fn init_http_server() -> Result<(), anyhow::Error> {
         format!("{}:{}", ip, cfg.http.port).parse()?
     };
 
+    let tls_config = load_rustls_config().unwrap();
+
     let server = HttpServer::new(move || {
         let cfg = get_config();
         let local_id = thread_id.load(Ordering::SeqCst) as usize;
@@ -592,7 +599,7 @@ async fn init_http_server() -> Result<(), anyhow::Error> {
     ))))
     .client_request_timeout(Duration::from_secs(max(5, cfg.limit.request_timeout)))
     .shutdown_timeout(max(1, cfg.limit.http_shutdown_timeout))
-    .bind(haddr)?;
+    .bind_rustls_0_23(haddr, tls_config)?;
 
     let server = server
         .workers(cfg.limit.http_worker_num)
@@ -623,6 +630,8 @@ async fn init_http_server_without_tracing() -> Result<(), anyhow::Error> {
         };
         format!("{}:{}", ip, cfg.http.port).parse()?
     };
+
+    let tls_config = load_rustls_config().unwrap();
 
     let server = HttpServer::new(move || {
         let cfg = get_config();
@@ -680,7 +689,7 @@ async fn init_http_server_without_tracing() -> Result<(), anyhow::Error> {
     ))))
     .client_request_timeout(Duration::from_secs(max(5, cfg.limit.request_timeout)))
     .shutdown_timeout(max(1, cfg.limit.http_shutdown_timeout))
-    .bind(haddr)?;
+    .bind_rustls_0_23(haddr, tls_config)?;
 
     let server = server
         .workers(cfg.limit.http_worker_num)
@@ -857,4 +866,27 @@ fn enable_tracing() -> Result<(), anyhow::Error> {
         ))
         .init();
     Ok(())
+}
+
+fn load_cert_file(path: &str) -> std::io::Result<Vec<CertificateDer<'static>>> {
+    let file = std::fs::File::open(path)?;
+    certs(&mut std::io::BufReader::new(file)).collect()
+}
+
+fn load_private_keys(path: &str) -> std::io::Result<PrivateKeyDer<'static>> {
+    let file = std::fs::File::open(path)?;
+    private_key(&mut std::io::BufReader::new(file)).map(|key| key.unwrap())
+}
+
+pub fn load_rustls_config() -> Result<ServerConfig, Box<dyn std::error::Error + Send + Sync>> {
+    let config = ServerConfig::builder();
+
+    // load TLS key/cert files
+    let cert_chain = load_cert_file("data/tls/server.crt")?;
+    let private_key = load_private_keys("data/tls/server.key")?;
+
+    Ok(config
+        .with_no_client_auth()
+        .with_single_cert(cert_chain, private_key)
+        .expect("bad certificate/key"))
 }

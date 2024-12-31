@@ -46,8 +46,8 @@ codegen-units = 4
 
 [dependencies]
 actix-cors = "0.7"
-actix-http = "3.8"
-actix-multipart = { version = "0.6", features = ["derive"] }
+actix-http = "3.9"
+actix-multipart = { version = "0.7", features = ["derive"] }
 actix-web.workspace = true
 actix-web-httpauth = "0.8"
 actix-web-lab = "0.20"
@@ -145,6 +145,8 @@ regex.workspace = true
 regex-syntax.workspace = true
 reqwest.workspace = true
 rust-embed-for-web = "11.2.1"
+rustls.workspace = true
+rustls-pemfile.workspace = true
 sea-orm.workspace = true
 segment.workspace = true
 serde.workspace = true
@@ -218,7 +220,7 @@ wal = { path = "src/wal" }
 proto = { path = "src/proto" }
 report_server = { path = "src/report_server" }
 ahash = { version = "0.8", features = ["serde"] }
-actix-web = "4.8"
+actix-web = { version = "4.9", features = ["rustls-0_23"] }
 actix-web-prometheus = { version = "0.1", features = ["process"] }
 anyhow = "1.0"
 arc-swap = "1.7.1"
@@ -292,6 +294,11 @@ regex-syntax = "0.8"
 reqwest = { version = "0.12", default-features = false, features = [
     "rustls-tls-native-roots",
     "stream",
+] }
+rustls-pemfile = "2"
+rustls = { version = "0.23.20", default-features = false, features = [
+    "std",
+    "tls12",
 ] }
 sea-orm = { version = "1.1.0", features = [
     "sqlx-all",
